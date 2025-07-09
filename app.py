@@ -13,30 +13,27 @@ st.set_page_config(page_title="🤖 AI Model Predictor", page_icon="🤖", layou
 
 @st.cache_resource
 def load_model_from_drive():
+    """Load model directly from Google Drive .h5 link"""
     try:
         file_id = "1WMmCh2bxuTiecevrQLTC2BeWJ9e-Gs_1"
-        gdrive_url = f"https://drive.google.com/uc?id={file_id}"
-        response = requests.get(gdrive_url)
+        url = f"https://drive.google.com/uc?id={file_id}&export=download"
+
+        response = requests.get(url)
         if response.status_code != 200:
-            st.error(f"Failed to download model: HTTP {response.status_code}")
+            st.error(f"Failed to download model. Status code: {response.status_code}")
             return None, None
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            zip_path = os.path.join(tmp_dir, "model.zip")
-            with open(zip_path, 'wb') as f:
-                f.write(response.content)
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(tmp_dir)
-            for root, dirs, files in os.walk(tmp_dir):
-                for file in files:
-                    if file.endswith('.h5'):
-                        model_path = os.path.join(root, file)
-                        model = tf.keras.models.load_model(model_path)
-                        return model, file
-        st.error("No .h5 model file found in the zip archive")
-        return None, None
+
+        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp_file:
+            tmp_file.write(response.content)
+            tmp_model_path = tmp_file.name
+
+        model = tf.keras.models.load_model(tmp_model_path)
+        return model, "model.h5"
+
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         return None, None
+
 
 def preprocess_image(image, target_size=(160, 240)):
     if image.mode != 'RGB':
