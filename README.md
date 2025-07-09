@@ -1,1 +1,0 @@
-Environmental_Monitoring_and_Classification_of_Land_Cover_Using_Satellite_Images
