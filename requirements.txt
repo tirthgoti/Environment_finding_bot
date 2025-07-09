@@ -1,5 +1,6 @@
 streamlit
-tensorflow==2.11.0
+tensorflow
 pillow
 numpy
-gdown
+pandas
+requests
