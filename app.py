@@ -2,123 +2,130 @@ import streamlit as st
 import tensorflow as tf
 import numpy as np
 from PIL import Image
-import requests
-import tempfile
-import zipfile
 import os
+import tempfile
+import requests
 import pandas as pd
 import plotly.express as px
+import gdown
 
-st.set_page_config(page_title="🤖 AI Model Predictor", page_icon="🤖", layout="wide")
+st.set_page_config(
+    page_title="🤖 AI Model Predictor",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 3rem;
+        color: #FF6B6B;
+        text-align: center;
+        margin-bottom: 2rem;
+        text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+    }
+</style>
+""", unsafe_allow_html=True)
 
 @st.cache_resource
 def load_model_from_drive():
-    """Load model directly from Google Drive .h5 link"""
     try:
         file_id = "1WMmCh2bxuTiecevrQLTC2BeWJ9e-Gs_1"
-        url = f"https://drive.google.com/uc?id={file_id}&export=download"
+        output_path = os.path.join(tempfile.gettempdir(), "model.h5")
 
-        response = requests.get(url)
-        if response.status_code != 200:
-            st.error(f"Failed to download model. Status code: {response.status_code}")
-            return None, None
+        gdown.download(f"https://drive.google.com/uc?id={file_id}", output_path, quiet=False)
 
-        with tempfile.NamedTemporaryFile(suffix=".h5", delete=False) as tmp_file:
-            tmp_file.write(response.content)
-            tmp_model_path = tmp_file.name
-
-        model = tf.keras.models.load_model(tmp_model_path)
+        model = tf.keras.models.load_model(output_path)
         return model, "model.h5"
-
+    
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         return None, None
 
-
-def preprocess_image(image, target_size=(160, 240)):
+def preprocess_image(image, target_size=(224, 224)):
     if image.mode != 'RGB':
         image = image.convert('RGB')
     image = image.resize(target_size)
-    img_array = np.array(image) / 255.0
-    img_array = img_array.reshape(1, -1).astype('float32')  # Flattened
+    img_array = np.array(image)
+    img_array = np.expand_dims(img_array, axis=0).astype('float32') / 255.0
     return img_array
 
 def create_prediction_chart(predictions, labels):
     df = pd.DataFrame({'Class': labels, 'Probability': predictions[0]})
-    fig = px.bar(df, x='Class', y='Probability', color='Probability',
-                 color_continuous_scale='viridis',
-                 title='Prediction Probabilities')
-    fig.update_layout(showlegend=False, plot_bgcolor='rgba(0,0,0,0)',
-                      paper_bgcolor='rgba(0,0,0,0)', font=dict(color='white'))
+    fig = px.bar(df, x='Class', y='Probability', color='Probability', color_continuous_scale='viridis')
+    fig.update_layout(showlegend=False)
     return fig
 
 def main():
-    st.title("🤖 AI Model Predictor")
+    st.markdown('<h1 class="main-header">🤖 AI Model Predictor</h1>', unsafe_allow_html=True)
 
-    with st.spinner("Loading model..."):
+    with st.spinner("🔄 Downloading model from Google Drive..."):
         model, model_name = load_model_from_drive()
 
     if model is None:
-        st.stop()
+        return
 
-    st.sidebar.header("📊 Model Dashboard")
-    st.sidebar.write(f"**File**: {model_name}")
-    st.sidebar.write(f"**Input Shape**: {model.input_shape}")
-    st.sidebar.write(f"**Output Shape**: {model.output_shape}")
+    st.success(f"✅ Model loaded: {model_name}")
 
-    confidence_threshold = st.sidebar.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.1)
-    show_probs = st.sidebar.checkbox("Show All Probabilities", True)
-    show_chart = st.sidebar.checkbox("Show Prediction Charts", True)
+    with st.sidebar:
+        st.header("📊 Model Dashboard")
+        st.info(f"📁 File: {model_name}")
+        st.info(f"📐 Input: {model.input_shape}")
+        st.info(f"📊 Output: {model.output_shape}")
 
-    num_classes = model.output_shape[-1] if len(model.output_shape) > 1 else 1
-    if num_classes > 1:
-        default_labels = [f"Class {i+1}" for i in range(num_classes)]
-        class_labels_input = st.sidebar.text_area("Enter class labels:", "\n".join(default_labels))
-        class_labels = [label.strip() for label in class_labels_input.split('\n') if label.strip()]
-    else:
-        class_labels = ["Output"]
+        confidence_threshold = st.slider("Confidence Threshold", 0.0, 1.0, 0.5, 0.1)
+        show_probabilities = st.checkbox("Show All Probabilities", True)
+        show_charts = st.checkbox("Show Prediction Charts", True)
+
+        num_classes = model.output_shape[-1] if len(model.output_shape) > 1 else 1
+        if num_classes > 1:
+            default_labels = [f"Class {i+1}" for i in range(num_classes)]
+            class_labels_input = st.text_area("Class labels (one per line):", "\n".join(default_labels), height=100)
+            class_labels = [label.strip() for label in class_labels_input.split('\n') if label.strip()]
+        else:
+            class_labels = ["Output"]
 
     st.header("📸 Upload Image")
-    uploaded_file = st.file_uploader("Upload an image", type=["jpg", "jpeg", "png", "bmp"])
+    uploaded_file = st.file_uploader("Choose an image file", type=['jpg', 'jpeg', 'png'])
 
     if uploaded_file:
         image = Image.open(uploaded_file)
         st.image(image, caption="Uploaded Image", use_column_width=True)
 
-        st.subheader("🎯 AI Prediction")
-        if st.button("🚀 Predict"):
-            with st.spinner("Predicting..."):
+        if st.button("🚀 Predict", type="primary"):
+            with st.spinner("🧠 AI is predicting..."):
                 try:
                     processed_image = preprocess_image(image)
                     predictions = model.predict(processed_image, verbose=0)
 
-                    if len(predictions.shape) > 1 and predictions.shape[1] > 1:
+                    if predictions.shape[-1] > 1:
                         predicted_class_idx = np.argmax(predictions[0])
                         confidence = np.max(predictions[0])
                         predicted_class = class_labels[predicted_class_idx]
-                        st.write(f"**Predicted Class:** {predicted_class}")
-                        st.write(f"**Confidence:** {confidence:.2%}")
-                        if confidence >= confidence_threshold:
-                            st.success("High Confidence")
-                        else:
-                            st.warning("Low Confidence")
 
-                        if show_probs:
-                            st.subheader("📊 Class Probabilities")
-                            for i, (label, prob) in enumerate(zip(class_labels, predictions[0])):
+                        st.markdown(f"### 🏆 Prediction: `{predicted_class}`")
+                        st.markdown(f"**Confidence**: {confidence:.2%}")
+
+                        if confidence >= confidence_threshold:
+                            st.success("✅ High confidence")
+                        else:
+                            st.warning("⚠️ Low confidence")
+
+                        if show_probabilities:
+                            for label, prob in zip(class_labels, predictions[0]):
                                 st.write(f"{label}: {prob:.3f}")
                                 st.progress(float(prob))
 
-                        if show_chart:
-                            st.subheader("📈 Prediction Chart")
+                        if show_charts:
                             fig = create_prediction_chart(predictions, class_labels)
                             st.plotly_chart(fig, use_container_width=True)
                     else:
-                        st.write(f"**Prediction:** {predictions[0][0]:.4f}")
-
+                        st.markdown(f"### Output: {predictions[0][0]:.4f}")
                 except Exception as e:
-                    st.error(f"Prediction error: {e}")
-                    st.info("Try adjusting the image or verifying model input shape.")
+                    st.error(f"Prediction Error: {e}")
+    else:
+        st.info("👆 Upload an image to start predictions.")
 
 if __name__ == "__main__":
     main()
