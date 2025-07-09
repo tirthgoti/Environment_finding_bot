@@ -1,7 +1,7 @@
 streamlit
-tensorflow==2.11.0
+tensorflow-cpu==2.11.0
 gdown
 numpy
-Pillow
+pillow
 pandas
 plotly
